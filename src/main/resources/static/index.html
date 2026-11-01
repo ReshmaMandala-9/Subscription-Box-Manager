@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subscription Box Manager</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body{font-family:Arial,sans-serif;max-width:1000px;margin:20px auto;padding:0 10px;background:#f5f6fa}
+    h1{margin-bottom:10px}
+    .cards{display:flex;gap:15px;align-items:stretch}
+    .card{background:#fff;padding:15px;border-radius:8px;flex:1;box-shadow:0 1px 4px #0002;max-height:260px;overflow:hidden}
+    .card h3{margin:0 0 8px 0}
+    .card h2{margin:0}
+    .box{background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 4px #0002}
+    .form-row{background:#fff;padding:12px;border-radius:8px;box-shadow:0 1px 4px #0002}
+    input,select{padding:6px;margin:3px}
+    button{padding:6px 12px;cursor:pointer}
+    table{width:100%;background:#fff;border-collapse:collapse;box-shadow:0 1px 4px #0002;margin-bottom:10px}
+    td,th{padding:8px;border-bottom:1px solid #ddd;text-align:left}
+    th{background:#eef0f6}
+    .bad{color:#c0392b;font-weight:bold}
+    .good{color:#27ae60;font-weight:bold}
+    .error{color:#c0392b;margin:6px 0}
+    .muted{color:#888}
+    label.small{font-size:12px;color:#555;margin-left:6px}
+    .scroll{max-height:320px;overflow-y:auto}
+    .total{font-size:18px;font-weight:bold;margin:6px 0}
+
+    .alert{padding:8px 12px;border-radius:6px;margin:6px 0;background:#fff8e1;border-left:4px solid #f39c12}
+    .alert.ANNUAL{background:#f4ecf7;border-left-color:#8e44ad}
+    .alert.TRIAL_END{background:#e8f4fd;border-left-color:#2980b9}
+    .alert.urgent{background:#fdecea;border-left-color:#c0392b}
+    .row-head{display:flex;justify-content:space-between;align-items:center}
+
+    .months{display:flex;gap:15px;flex-wrap:wrap}
+    .month{flex:1;min-width:300px;background:#fff;padding:10px;border-radius:8px;box-shadow:0 1px 4px #0002}
+    .month h4{margin:0 0 8px 0}
+    .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+    .dow{font-weight:bold;text-align:center;font-size:12px}
+    .day{min-width:0;min-height:62px;border:1px solid #eee;padding:2px;font-size:11px;overflow:hidden}
+    .day.today{border:2px solid #2980b9}
+    .day .num{color:#888}
+    .ev{background:#d6eaf8;border-radius:3px;margin-top:2px;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ev.TRIAL_END{background:#fcf3cf}
+
+    @media (max-width:700px){.cards{flex-direction:column}}
+    @media print{ body.print-report > *:not(#reportWrap){display:none !important} #printBtn{display:none} }
+  </style>
+</head>
+<body>
+<h1>Subscription Box Manager</h1>
+
+<div class="cards">
+  <div class="card"><h3>Monthly</h3><h2 id="monthly">0</h2></div>
+  <div class="card"><h3>Annual Projection</h3><h2 id="annual">0</h2></div>
+  <div class="card"><canvas id="chart" style="max-height:200px"></canvas></div>
+</div>
+
+<div class="row-head">
+  <h3>Upcoming Alerts</h3>
+  <button onclick="enableNotif()">Enable browser notifications</button>
+</div>
+<div id="alerts"></div>
+
+<h3>Add Subscription</h3>
+<div class="form-row">
+  <input id="name" placeholder="Service name">
+  <select id="category" title="Category">
+    <option>ENTERTAINMENT</option><option>SOFTWARE</option><option>HEALTH_FITNESS</option>
+    <option>FOOD_DELIVERY</option><option>NEWS_LEARNING</option><option>GAMING</option>
+    <option>SHOPPING</option><option>OTHER</option>
+  </select>
+  <input id="amount" type="number" placeholder="Amount" step="0.01" min="0">
+  <select id="cycle" title="Billing cycle">
+    <option>MONTHLY</option><option>QUARTERLY</option><option>ANNUAL</option>
+  </select>
+  <label class="small">Start date</label>
+  <input id="start" type="date" title="Date of the first charge">
+  <label class="small">Next renewal</label>
+  <input id="renewal" type="date" title="Next renewal date">
+  <label class="small">Trial ends</label>
+  <input id="trial" type="date" title="Free trial end date (optional)">
+  <label class="small">Co-payers</label>
+  <input id="co" type="number" value="1" min="1" style="width:60px" title="Number of co-payers">
+  <select id="sat" title="Satisfaction 1-5">
+    <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option>
+  </select>
+  <select id="freq" title="Usage frequency">
+    <option>DAILY</option><option selected>WEEKLY</option><option>MONTHLY</option><option>RARELY</option>
+  </select>
+  <button onclick="add()">Add</button>
+  <div id="error" class="error"></div>
+</div>
+
+<h3>Monthly Spending Trend (last 12 months)</h3>
+<div class="box"><div style="position:relative;height:260px"><canvas id="trend"></canvas></div></div>
+
+<h3>Renewal Calendar</h3>
+<div id="calendars" class="months"></div>
+
+<h3>My Subscriptions</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Service</th><th>Category</th><th>Your monthly</th><th>Per day</th>
+      <th>Rating</th><th>ROI</th><th>Verdict</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<h3>Payment History</h3>
+<div id="payTotal" class="muted"></div>
+<div class="scroll">
+  <table>
+    <thead><tr><th>Date</th><th>Service</th><th>Category</th><th>Amount (your share)</th></tr></thead>
+    <tbody id="payRows"></tbody>
+  </table>
+</div>
+
+<div id="reportWrap">
+  <div class="row-head">
+    <h3>Yearly Spending Report</h3>
+    <div>
+      <select id="year" onchange="loadReport()"></select>
+      <button id="printBtn" onclick="printReport()">Print report</button>
+    </div>
+  </div>
+  <div id="report" class="box"></div>
+</div>
+
+<h3>Cancellation History</h3>
+<table>
+  <thead><tr><th>Service</th><th>Category</th><th>Cancelled on</th><th>Reason</th><th>Total paid</th></tr></thead>
+  <tbody id="cancelRows"></tbody>
+</table>
+
+<h3>Import / Export</h3>
+<div class="box">
+  <div>
+    <b>Export:</b>
+    <a href="/api/export/subscriptions.csv"><button>Subscriptions (CSV)</button></a>
+    <a href="/api/export/payments.csv"><button>Payment history (CSV)</button></a>
+    <button onclick="pdfSubscriptions()">Subscriptions (PDF)</button>
+    <button onclick="pdfPayments()">Payment history (PDF)</button>
+  </div>
+  <div style="margin-top:12px">
+    <b>Import:</b>
+    <a href="/api/import/template.csv">Download template</a>
+    <input id="csvFile" type="file" accept=".csv,text/csv">
+    <button onclick="importCsv()">Import</button>
+    <div id="importResult" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+let chart, trendChart;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function esc(t) {
+  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+// Get a fresh Spring Security CSRF token for requests that change data.
+async function getCsrfHeaders() {
+  const response = await fetch('/api/auth/csrf', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('Could not obtain CSRF token (HTTP ' + response.status + ')');
+  }
+  const csrf = await response.json();
+  return { [csrf.headerName]: csrf.token };
+}
+
+
+function initYears() {
+  const sel = document.getElementById('year');
+  const y = new Date().getFullYear();
+  for (let i = 0; i < 5; i++) {
+    const o = document.createElement('option');
+    o.textContent = y - i;
+    sel.appendChild(o);
+  }
+}
+
+async function load() {
+  try {
+    const d = await (await fetch('/api/dashboard')).json();
+    document.getElementById('monthly').innerText = d.monthlyTotal;
+    document.getElementById('annual').innerText = d.annualProjection;
+
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('chart'), {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(d.byCategory),
+        datasets: [{ data: Object.values(d.byCategory) }]
+      },
+      options: { maintainAspectRatio: true }
+    });
+
+    const list = await (await fetch('/api/subscriptions')).json();
+    document.getElementById('rows').innerHTML = list.map(v => `<tr>
+      <td>${esc(v.sub.serviceName)}</td>
+      <td>${v.sub.category}</td>
+      <td>${v.monthlyCost}</td>
+      <td>${v.costPerDay}</td>
+      <td>${v.sub.satisfaction}/5</td>
+      <td>${v.roiScore}</td>
+      <td class="${v.verdict == 'Worth It' ? 'good' : 'bad'}">${v.verdict}</td>
+      <td>
+        <select onchange="setStatus(${v.sub.id}, this.value)">
+          ${['ACTIVE', 'PAUSED', 'CANCELLED'].map(s =>
+            `<option ${s == v.sub.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td><button onclick="del(${v.sub.id})">Delete</button></td>
+    </tr>`).join('');
+
+    await loadAlerts();
+    await renderCalendars();
+    await loadTrend();
+    await loadPayments();
+    await loadReport();
+    await loadCancellations();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('error').innerText = 'Could not load data. Is the app running?';
+  }
+}
+
+/* ---------- Alerts and notifications ---------- */
+async function loadAlerts() {
+  const list = await (await fetch('/api/alerts')).json();
+  const box = document.getElementById('alerts');
+  box.innerHTML = list.length
+    ? list.map(a => `<div class="alert ${a.type} ${a.daysLeft <= 3 ? 'urgent' : ''}">${esc(a.message)}</div>`).join('')
+    : '<div class="muted">No upcoming renewals or trial endings.</div>';
+  notify(list);
+}
+
+function notify(list) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const urgent = list.filter(a => a.daysLeft <= 3);
+  if (!urgent.length) return;
+  const key = 'notified-' + new Date().toDateString();
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  } catch (e) {}
+  new Notification('Subscription reminders', { body: urgent.map(a => a.message).join('\n') });
+}
+
+function enableNotif() {
+  if (!('Notification' in window)) { alert('This browser does not support notifications.'); return; }
+  Notification.requestPermission().then(p => {
+    if (p === 'granted') { try { localStorage.clear(); } catch (e) {} loadAlerts(); }
+    else alert('Notifications are blocked. Allow them from the lock icon in the address bar.');
+  });
+}
+
+/* ---------- Calendar ---------- */
+async function renderCalendars() {
+  const now = new Date();
+  const box = document.getElementById('calendars');
+  box.innerHTML = '';
+  for (let i = 0; i < 2; i++) {
+    const dt = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const y = dt.getFullYear(), m = dt.getMonth() + 1;
+    const data = await (await fetch(`/api/calendar?year=${y}&month=${m}`)).json();
+    box.appendChild(buildMonth(y, m, data));
+  }
+}
+
+function buildMonth(y, m, data) {
+  const wrap = document.createElement('div');
+  wrap.className = 'month';
+  const title = new Date(y, m - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+  const t = new Date();
+  const todayKey = `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+
+  let html = `<h4>${title}</h4><div class="grid">`;
+  ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => html += `<div class="dow">${d}</div>`);
+
+  const firstDay = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  for (let i = 0; i < firstDay; i++) html += '<div></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${y}-${pad(m)}-${pad(d)}`;
+    const items = data[key] || [];
+    html += `<div class="day ${key === todayKey ? 'today' : ''}"><span class="num">${d}</span>`
+      + items.map(e => `<div class="ev ${e.type}" title="${esc(e.serviceName)} - ${e.charge}${e.type === 'TRIAL_END' ? ' (trial ends)' : ''}">${esc(e.serviceName)}</div>`).join('')
+      + '</div>';
+  }
+  html += '</div>';
+  wrap.innerHTML = html;
+  return wrap;
+}
+
+/* ---------- Trend chart (feature 21) ---------- */
+async function loadTrend() {
+  const data = await (await fetch('/api/trend')).json();
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trend'), {
+    type: 'line',
+    data: {
+      labels: data.map(p => p.month),
+      datasets: [{
+        label: 'Total spent',
+        data: data.map(p => p.total),
+        borderColor: '#2980b9',
+        backgroundColor: 'rgba(41,128,185,0.15)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+}
+
+/* ---------- Payment history (feature 20) ---------- */
+async function loadPayments() {
+  const list = await (await fetch('/api/payments')).json();
+  const total = list.reduce((a, p) => a + p.amount, 0);
+  document.getElementById('payTotal').innerText =
+    list.length ? `${list.length} charges, total ${total.toFixed(2)}` : '';
+  document.getElementById('payRows').innerHTML = list.length
+    ? list.map(p => `<tr><td>${p.paidOn}</td><td>${esc(p.serviceName)}</td><td>${p.category}</td><td>${p.amount.toFixed(2)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="muted">No payments yet. Add a subscription with a Start date in the past.</td></tr>';
+}
+
+/* ---------- Yearly report (feature 23) ---------- */
+async function loadReport() {
+  const year = document.getElementById('year').value;
+  const r = await (await fetch('/api/report?year=' + year)).json();
+  const box = document.getElementById('report');
+
+  if (!r.charges) {
+    box.innerHTML = `<div class="muted">No charges recorded for ${r.year}.</div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <h2 style="margin-top:0">Subscription Report ${r.year}</h2>
+    <div class="total">Total spent: ${r.total.toFixed(2)} (${r.charges} charges)</div>
+
+    <h4>By month</h4>
+    <table>
+      <thead><tr>${MONTHS.map(m => `<th>${m}</th>`).join('')}</tr></thead>
+      <tbody><tr>${r.byMonth.map(v => `<td>${v.toFixed(2)}</td>`).join('')}</tr></tbody>
+    </table>
+
+    <h4>By category</h4>
+    <table>
+      <thead><tr><th>Category</th><th>Total</th></tr></thead>
+      <tbody>${Object.entries(r.byCategory).map(([k, v]) => `<tr><td>${k}</td><td>${v.toFixed(2)}</td></tr>`).join('')}</tbody>
+    </table>
+
+    <h4>By service</h4>
+    <table>
+      <thead><tr><th>Service</th><th>Charges</th><th>Total</th></tr></thead>
+      <tbody>${r.services.map(s => `<tr><td>${esc(s.name)}</td><td>${s.charges}</td><td>${s.total.toFixed(2)}</td></tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function printReport() {
+  document.body.classList.add('print-report');
+  window.print();
+  document.body.classList.remove('print-report');
+}
+
+/* ---------- Cancellation history (feature 22) ---------- */
+async function loadCancellations() {
+  const list = await (await fetch('/api/cancellations')).json();
+  document.getElementById('cancelRows').innerHTML = list.length
+    ? list.map(c => `<tr>
+        <td>${esc(c.serviceName)}</td><td>${c.category}</td><td>${c.cancelledDate}</td>
+        <td>${esc(c.reason)}</td><td>${c.totalPaid.toFixed(2)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="muted">No cancelled subscriptions.</td></tr>';
+}
+
+/* ---------- Add, status, delete ---------- */
+async function add() {
+  const errorBox = document.getElementById('error');
+  errorBox.innerText = '';
+
+  const name = document.getElementById('name').value.trim();
+  const amount = parseFloat(document.getElementById('amount').value);
+
+  if (!name) { errorBox.innerText = 'Please enter a service name.'; return; }
+  if (isNaN(amount) || amount <= 0) { errorBox.innerText = 'Please enter an amount greater than 0.'; return; }
+
+  const body = {
+    serviceName: name,
+    category: document.getElementById('category').value,
+    amount: amount,
+    billingCycle: document.getElementById('cycle').value,
+    startDate: document.getElementById('start').value || null,
+    nextRenewalDate: document.getElementById('renewal').value || null,
+    trialEndDate: document.getElementById('trial').value || null,
+    coPayers: parseInt(document.getElementById('co').value) || 1,
+    satisfaction: parseInt(document.getElementById('sat').value),
+    usageFrequency: document.getElementById('freq').value
+  };
+
+  let res;
+  try {
+    const csrfHeaders = await getCsrfHeaders();
+    res = await fetch('/api/subscriptions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...csrfHeaders
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    console.error('Subscription request failed:', error);
+    errorBox.innerText = 'Could not connect to the server or get a security token.';
+    return;
+  }
+
+  if (!res.ok) {
+    const details = await res.text();
+    console.error('Save failed:', res.status, details);
+    errorBox.innerText = `Could not save. Server returned ${res.status}. Check the browser console for details.`;
+    return;
+  }
+
+  ['name', 'amount', 'start', 'renewal', 'trial'].forEach(id => document.getElementById(id).value = '');
+  load();
+}
+
+async function setStatus(id, value) {
+  let url = `/api/subscriptions/${id}/status?value=${value}`;
+  if (value === 'CANCELLED') {
+    const reason = prompt('Why are you cancelling? (optional)');
+    if (reason === null) { load(); return; }   // user pressed Cancel
+    url += '&reason=' + encodeURIComponent(reason);
+  }
+  try {
+    const csrfHeaders = await getCsrfHeaders();
+    const res = await fetch(url, { method: 'PATCH', headers: csrfHeaders });
+    if (!res.ok) {
+      console.error('Status update failed:', res.status, await res.text());
+      alert('Could not update status. Server returned ' + res.status + '.');
+    }
+  } catch (error) {
+    console.error('Status update request failed:', error);
+    alert('Could not connect to the server.');
+  }
+  load();
+}
+
+async function del(id) {
+  if (!confirm('Delete this subscription?')) return;
+  try {
+    const csrfHeaders = await getCsrfHeaders();
+    const res = await fetch('/api/subscriptions/' + id, {
+      method: 'DELETE',
+      headers: csrfHeaders
+    });
+    if (!res.ok) {
+      console.error('Delete failed:', res.status, await res.text());
+      alert('Could not delete subscription. Server returned ' + res.status + '.');
+      return;
+    }
+  } catch (error) {
+    console.error('Delete request failed:', error);
+    alert('Could not connect to the server.');
+    return;
+  }
+  load();
+}
+
+/* ---------- Import / Export (features 25, 26) ---------- */
+async function importCsv() {
+  const out = document.getElementById('importResult');
+  const file = document.getElementById('csvFile').files[0];
+  if (!file) { out.innerText = 'Choose a CSV file first.'; return; }
+
+  const text = await file.text();
+  let res;
+  try {
+    const csrfHeaders = await getCsrfHeaders();
+    res = await fetch('/api/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain; charset=UTF-8',
+        ...csrfHeaders
+      },
+      body: text
+    });
+  } catch (error) {
+    console.error('CSV import request failed:', error);
+    out.innerText = 'Could not connect to the server or get a security token.';
+    return;
+  }
+  if (!res.ok) {
+    console.error('CSV import failed:', res.status, await res.text());
+    out.innerText = 'Import failed. Server returned ' + res.status + '.';
+    return;
+  }
+
+  const r = await res.json();
+  out.innerHTML = `<b>Imported ${r.imported}, skipped ${r.skipped}.</b>`
+    + (r.errors.length ? '<div class="error">' + r.errors.map(esc).join('<br>') + '</div>' : '');
+  document.getElementById('csvFile').value = '';
+  load();
+}
+
+function openPrintWindow(title, tableHtml) {
+  const w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups for this site, then try again.'); return; }
+  w.document.write(`<html><head><title>${title}</title>
+    <style>body{font-family:Arial,sans-serif;margin:20px}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #ccc;padding:6px;text-align:left;font-size:13px}
+    th{background:#eef0f6}</style></head>
+    <body><h2>${title}</h2><p>Generated on ${new Date().toLocaleDateString()}</p>${tableHtml}</body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();   // choose "Save as PDF" as the printer
+}
+
+async function pdfSubscriptions() {
+  const list = await (await fetch('/api/subscriptions')).json();
+  const rows = list.map(v => `<tr><td>${esc(v.sub.serviceName)}</td><td>${v.sub.category}</td>
+    <td>${v.sub.billingCycle}</td><td>${v.sub.status}</td><td>${v.monthlyCost}</td>
+    <td>${v.sub.satisfaction}/5</td><td>${v.verdict}</td></tr>`).join('');
+  openPrintWindow('My Subscriptions',
+    `<table><thead><tr><th>Service</th><th>Category</th><th>Cycle</th><th>Status</th>
+     <th>Your monthly</th><th>Rating</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>`);
+}
+
+async function pdfPayments() {
+  const list = await (await fetch('/api/payments')).json();
+  const rows = list.map(p => `<tr><td>${p.paidOn}</td><td>${esc(p.serviceName)}</td>
+    <td>${p.category}</td><td>${p.amount.toFixed(2)}</td></tr>`).join('');
+  openPrintWindow('Payment History',
+    `<table><thead><tr><th>Date</th><th>Service</th><th>Category</th><th>Amount</th></tr></thead>
+     <tbody>${rows}</tbody></table>`);
+}
+
+initYears();
+load();
+</script>
+</body>
+</html>
